@@ -18,7 +18,6 @@ function App() {
   );
 }
 
-// ポケモンリストを取得するカスタムフック
 function usePokemonList() {
   const [pokemonList, setPokemonList] = useState([]);
   const [loading, setLoading] = useState(true);
