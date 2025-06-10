@@ -26,7 +26,8 @@ function App() {
       if (result.error) {
         setMessage(`Error selecting from table: ${result.error}`);
       } else {
-        setMessage(`Selected ${result.length} rows from pokemon table`);
+        console.table(result.data);
+        setMessage(`${JSON.stringify(result.data)}`);
       }
     } catch (error) {
       setMessage(`Error selecting from table: ${error}`);
