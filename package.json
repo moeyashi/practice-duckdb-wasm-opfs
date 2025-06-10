@@ -13,6 +13,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@duckdb/duckdb-wasm": "^1.29.1-dev132.0",
     "@vitejs/plugin-react": "^4.5.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",

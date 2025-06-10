@@ -1,19 +1,33 @@
 import { createRoot } from "react-dom/client";
 import { useEffect, useState } from "react";
+import { useDuckdbWasm } from "./hooks";
 
 function App() {
-  const { pokemonList, loading, error } = usePokemonList();
+  const { initialized, createTable } = useDuckdbWasm();
+  // const { pokemonList, loading, error } = usePokemonList();
+
+  useEffect(() => {
+    const fn = async () => {
+      if (!initialized) {
+        console.log("DuckDB-Wasm is not initialized yet");
+        return;
+      }
+      await createTable("pokemon", [{ id: 1, name: "Pikachu" }, { id: 2, name: "Bulbasaur" }, { id: 3, name: "Charmander" }]);
+    };
+    fn();
+  }
+  , [initialized, createTable]);
 
   return (
     <div>
       <h1>ポケモンリスト</h1>
-      {loading && <p>読み込み中...</p>}
+      {/* {loading && <p>読み込み中...</p>}
       {error && <p style={{ color: 'red' }}>エラー: {error}</p>}
       <ul>
         {pokemonList.map((pokemon) => (
           <li key={pokemon.name}>{pokemon.name}</li>
         ))}
-      </ul>
+      </ul> */}
     </div>
   );
 }
