@@ -43,16 +43,53 @@ export const useDuckdbWasm = () => {
     console.log(`Creating or recreating table ${tableName}`);
     /** @type {duckdb.AsyncDuckDBConnection} */
     const c = await db.connect();
-    await db.registerFileText("rows.json", JSON.stringify(json));
-    await c.query(`DROP TABLE IF EXISTS ${tableName}`);
-    await c.insertJSONFromPath("rows.json", { name: tableName });
-    // await db.dropFile("rows.json");
-    const result = await c.query(`SELECT * FROM ${tableName} LIMIT 10`);
-    console.table(result.toArray());
-    await c.close();
+    try {
+      await db.registerFileText(`${tableName}.json`, JSON.stringify(json));
+      console.log(`Registered file ${tableName}.json`);
+      await c.query(`DROP TABLE IF EXISTS ${tableName}`);
+      await c.query(
+        `CREATE TABLE ${tableName} AS SELECT * FROM read_json_auto('${tableName}.json')`
+      );
+      console.log(`Table ${tableName} created or recreated successfully`);
+    } catch (error) {
+      console.error(`Error creating table ${tableName}:`, error);
+    } finally {
+      await db.dropFile(`${tableName}.json`);
+      await c.close();
+    }
   };
 
-  return { initialized, createTable };
+  const selectAll = async (tableName) => {
+    if (db === null) {
+      return { error: "DuckDB-Wasm is not initialized" };
+    }
+    console.log(`Selecting all from table ${tableName}`);
+    /** @type {duckdb.AsyncDuckDBConnection} */
+    const c = await db.connect();
+
+    try {
+      // table 存在チェック
+      const tableExists = await c.query(`
+      SELECT EXISTS (
+        SELECT 1 
+        FROM information_schema.tables 
+        WHERE table_name = '${tableName}'
+      ) as exists_flag;
+    `);
+      if (tableExists.toArray()[0].exists_flag === false) {
+        return { error: `Table ${tableName} does not exist.` };
+      }
+
+      const result = await c.query(`SELECT * FROM ${tableName}`);
+      return { data: result.toArray().map((r) => JSON.parse(r)) };
+    } catch (error) {
+      return { error };
+    } finally {
+      await c.close();
+    }
+  };
+
+  return { initialized, createTable, selectAll };
 };
 
 /**
@@ -71,6 +108,7 @@ const init = async () => {
     });
     return init();
   }
+  console.log("Initializing DuckDB-Wasm...");
   initializing = true;
   try {
     const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
@@ -83,10 +121,12 @@ const init = async () => {
     const logger = new duckdb.ConsoleLogger();
     const db = new duckdb.AsyncDuckDB(logger, worker);
     await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+    console.log("DuckDB-Wasm instantiated");
     await db.open({
       path: "opfs://duckdb-wasm.db",
       accessMode: duckdb.DuckDBAccessMode.READ_WRITE,
     });
+    console.log("DuckDB-Wasm database opened");
     URL.revokeObjectURL(workerUrl);
     console.log("DuckDB-Wasm initialized successfully");
     _db = db;

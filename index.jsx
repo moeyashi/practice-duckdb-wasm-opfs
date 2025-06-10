@@ -3,24 +3,42 @@ import { useEffect, useState } from "react";
 import { useDuckdbWasm } from "./hooks";
 
 function App() {
-  const { initialized, createTable } = useDuckdbWasm();
+  const { createTable, selectAll } = useDuckdbWasm();
   // const { pokemonList, loading, error } = usePokemonList();
 
-  useEffect(() => {
-    const fn = async () => {
-      if (!initialized) {
-        console.log("DuckDB-Wasm is not initialized yet");
-        return;
-      }
-      await createTable("pokemon", [{ id: 1, name: "Pikachu" }, { id: 2, name: "Bulbasaur" }, { id: 3, name: "Charmander" }]);
-    };
-    fn();
+  const [message, setMessage] = useState('select を押してね');
+
+  const handleCreateTable = async () => {
+    try {
+      await createTable("pokemon", [
+        { id: 1, name: "Pikachu" },
+        { id: 2, name: "Bulbasaur" },
+        { id: 3, name: "Charmander" }
+      ]);
+    } catch (error) {
+      setMessage(`Error creating table: ${error}`);
+    }
   }
-  , [initialized, createTable]);
+
+  const handleSelectAll = async () => {
+    try {
+      const result = await selectAll("pokemon");
+      if (result.error) {
+        setMessage(`Error selecting from table: ${result.error}`);
+      } else {
+        setMessage(`Selected ${result.length} rows from pokemon table`);
+      }
+    } catch (error) {
+      setMessage(`Error selecting from table: ${error}`);
+    }
+  }
 
   return (
     <div>
       <h1>ポケモンリスト</h1>
+      <div><button onClick={handleCreateTable}>create</button></div>
+      <div><button onClick={handleSelectAll}>select</button></div>
+      <div>{message}</div>
       {/* {loading && <p>読み込み中...</p>}
       {error && <p style={{ color: 'red' }}>エラー: {error}</p>}
       <ul>
