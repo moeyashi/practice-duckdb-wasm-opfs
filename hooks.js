@@ -9,14 +9,12 @@ export const usePokemonList = () => {
     if (exists.data) {
       return exists;
     }
-
     const res = await fetch("https://pokeapi.co/api/v2/pokemon");
     if (!res.ok) {
       return {
         error: `Failed to fetch data: ${res.status} ${res.statusText}`,
       };
     }
-
     const buffer = await res.arrayBuffer();
     await createTable("pokemon", buffer);
 
@@ -55,6 +53,7 @@ export const useDuckdbWasm = () => {
         console.error(`Error creating table ${tableName}:`, error);
       } finally {
         await db.dropFile(`${tableName}.json`);
+        console.log("closeing connection");
         await c.close();
       }
     });
@@ -84,6 +83,7 @@ export const useDuckdbWasm = () => {
       } catch (error) {
         return { error };
       } finally {
+        console.log("closeing connection");
         await c.close();
       }
     });
@@ -99,6 +99,7 @@ export const useDuckdbWasm = () => {
       } catch (error) {
         console.error(`Error dropping table ${tableName}:`, error);
       } finally {
+        console.log("closeing connection");
         await c.close();
       }
     });
@@ -107,7 +108,6 @@ export const useDuckdbWasm = () => {
   return { createTable, dropTable, selectAll };
 };
 
-let bundle;
 const logger = new duckdb.ConsoleLogger();
 
 /**
@@ -120,10 +120,8 @@ const withDuckDb = async (fn) => {
     "practice-duckdb-wasm-lock",
     async () => {
       console.log("Acquired DuckDB-Wasm lock");
-      if (!bundle) {
-        bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
-        console.log("Initialized DuckDB-Wasm bundle");
-      }
+      const bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
+      console.log("Initialized DuckDB-Wasm bundle");
       const workerUrl = URL.createObjectURL(
         new Blob([`importScripts("${bundle.mainWorker}");`], {
           type: "text/javascript",
@@ -140,6 +138,13 @@ const withDuckDb = async (fn) => {
           accessMode: duckdb.DuckDBAccessMode.READ_WRITE,
         });
         console.log("DuckDB-Wasm database opened");
+
+        //HACK https://github.com/duckdb/duckdb-wasm/pull/1962#issuecomment-2918724468
+        const c = await db.connect();
+        await c.query("CREATE OR REPLACE TABLE init_tmp as select 1;");
+        await c.query("DROP TABLE init_tmp;");
+        await c.close();
+
         console.log("DuckDB-Wasm initialized successfully");
         return await fn(db);
       } finally {
