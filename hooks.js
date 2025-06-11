@@ -45,9 +45,11 @@ export const useDuckdbWasm = () => {
         );
         console.log(`Registered file ${tableName}.json`);
         await c.query(`DROP TABLE IF EXISTS ${tableName}`);
+        console.log(`Dropped table ${tableName} if it existed`);
         await c.query(
           `CREATE TABLE ${tableName} AS SELECT * FROM read_json_auto('${tableName}.json')`
         );
+        await c.send("CHECKPOINT;");
         console.log(`Table ${tableName} created or recreated successfully`);
       } catch (error) {
         console.error(`Error creating table ${tableName}:`, error);
@@ -73,6 +75,7 @@ export const useDuckdbWasm = () => {
         ) as exists_flag;
       `);
         if (tableExists.toArray()[0].exists_flag === false) {
+          console.warn(`Table ${tableName} does not exist.`);
           return { error: `Table ${tableName} does not exist.` };
         }
 
@@ -113,34 +116,37 @@ const logger = new duckdb.ConsoleLogger();
  * @return {Promise<T>}
  */
 const withDuckDb = async (fn) => {
-  return await navigator.locks.request("duckdb-wasm-lock", async () => {
-    console.log("Acquired DuckDB-Wasm lock");
-    if (!bundle) {
-      bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
-      console.log("Initialized DuckDB-Wasm bundle");
+  return await navigator.locks.request(
+    "practice-duckdb-wasm-lock",
+    async () => {
+      console.log("Acquired DuckDB-Wasm lock");
+      if (!bundle) {
+        bundle = await duckdb.selectBundle(JSDELIVR_BUNDLES);
+        console.log("Initialized DuckDB-Wasm bundle");
+      }
+      const workerUrl = URL.createObjectURL(
+        new Blob([`importScripts("${bundle.mainWorker}");`], {
+          type: "text/javascript",
+        })
+      );
+      const worker = new Worker(workerUrl);
+      console.log("Initialized DuckDB-Wasm worker");
+      const db = new duckdb.AsyncDuckDB(logger, worker);
+      try {
+        await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+        console.log("DuckDB-Wasm instantiated");
+        await db.open({
+          path: "opfs://duckdb-wasm.db",
+          accessMode: duckdb.DuckDBAccessMode.READ_WRITE,
+        });
+        console.log("DuckDB-Wasm database opened");
+        console.log("DuckDB-Wasm initialized successfully");
+        return await fn(db);
+      } finally {
+        await db.terminate();
+        URL.revokeObjectURL(workerUrl);
+        console.log("Releasing DuckDB-Wasm lock");
+      }
     }
-    const workerUrl = URL.createObjectURL(
-      new Blob([`importScripts("${bundle.mainWorker}");`], {
-        type: "text/javascript",
-      })
-    );
-    const worker = new Worker(workerUrl);
-    console.log("Initialized DuckDB-Wasm worker");
-    const db = new duckdb.AsyncDuckDB(logger, worker);
-    try {
-      await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
-      console.log("DuckDB-Wasm instantiated");
-      await db.open({
-        path: "opfs://duckdb-wasm.db",
-        accessMode: duckdb.DuckDBAccessMode.READ_WRITE,
-      });
-      console.log("DuckDB-Wasm database opened");
-      console.log("DuckDB-Wasm initialized successfully");
-      return await fn(db);
-    } finally {
-      db.terminate();
-      URL.revokeObjectURL(workerUrl);
-      console.log("Releasing DuckDB-Wasm lock");
-    }
-  });
+  );
 };
