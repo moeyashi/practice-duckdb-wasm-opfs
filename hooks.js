@@ -10,6 +10,33 @@ let initializing = false;
  */
 let _db = null;
 
+export const usePokemonList = () => {
+  const { createTable, dropTable, selectAll } = useDuckdbWasm();
+  const fetchData = async () => {
+    const exists = await selectAll("pokemon");
+    if (exists.data) {
+      return exists;
+    }
+
+    const res = await fetch("https://pokeapi.co/api/v2/pokemon");
+    if (!res.ok) {
+      return {
+        error: `Failed to fetch data: ${res.status} ${res.statusText}`,
+      };
+    }
+
+    const buffer = await res.arrayBuffer();
+    await createTable("pokemon", buffer);
+
+    return await selectAll("pokemon");
+  };
+
+  return {
+    fetchData,
+    remove: () => dropTable("pokemon"),
+  };
+};
+
 export const useDuckdbWasm = () => {
   /**
    * @type {[duckdb.AsyncDuckDB|null, Function]}
@@ -34,9 +61,9 @@ export const useDuckdbWasm = () => {
 
   /**
    * @param {string} tableName
-   * @param {Array<Record>} json
+   * @param {ArrayBuffer} buffer
    */
-  const createTable = async (tableName, json) => {
+  const createTable = async (tableName, buffer) => {
     if (db === null) {
       throw new Error("DuckDB-Wasm is not initialized");
     }
@@ -44,7 +71,7 @@ export const useDuckdbWasm = () => {
     /** @type {duckdb.AsyncDuckDBConnection} */
     const c = await db.connect();
     try {
-      await db.registerFileText(`${tableName}.json`, JSON.stringify(json));
+      await db.registerFileBuffer(`${tableName}.json`, new Uint8Array(buffer));
       console.log(`Registered file ${tableName}.json`);
       await c.query(`DROP TABLE IF EXISTS ${tableName}`);
       await c.query(
@@ -89,7 +116,24 @@ export const useDuckdbWasm = () => {
     }
   };
 
-  return { initialized, createTable, selectAll };
+  const dropTable = async (tableName) => {
+    if (db === null) {
+      throw new Error("DuckDB-Wasm is not initialized");
+    }
+    console.log(`Dropping table ${tableName}`);
+    /** @type {duckdb.AsyncDuckDBConnection} */
+    const c = await db.connect();
+    try {
+      await c.query(`DROP TABLE IF EXISTS ${tableName}`);
+      console.log(`Table ${tableName} dropped successfully`);
+    } catch (error) {
+      console.error(`Error dropping table ${tableName}:`, error);
+    } finally {
+      await c.close();
+    }
+  };
+
+  return { initialized, createTable, dropTable, selectAll };
 };
 
 /**
